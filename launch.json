@@ -1,0 +1,19 @@
+{
+  "kind": "evm_contracts",
+  "contracts": [
+    {
+      "contract": "OracleVerifier",
+      "constructorArgs": [
+        "0x5598aa9146215bc13eb26f2c692ad1461fd32982"
+      ]
+    },
+    {
+      "contract": "HamsterHour",
+      "constructorArgs": [
+        "$owner",
+        "$contract:OracleVerifier"
+      ]
+    }
+  ],
+  "notes": "Hamster Hour: pari-mutuel betting in IMD on Squeekchain hamster wheel passes, settled only through signed IMD oracle attestations. OracleVerifier(signer_) takes the IMD oracle attester key 0x5598aa9146215bc13eb26f2c692ad1461fd32982, an external signer from the brief's oracle scheme (confirmed against the public IMD oracle API and the accepted README/docs), not an owner; the verifier has no owner and no signer rotation. HamsterHour(team_, verifier_) takes $owner as the immutable TEAM, the wallet that requested the launch, which receives 1% of non-void bets and holds only the four 48-hour-timelocked settings from the brief (setStakingToken, setJackpotToken once each; sourceUrl and genesisTimestamp updatable), and $contract:OracleVerifier as its attestation verifier. Neither constructor is payable, calls another contract, or grants anything to msg.sender or tx.origin. IMD token, genesis 1791847800, 600 s rounds and the 91/5/3/1 split are constants in source. No token, pool, ETH funding or initialization call is part of this launch."
+}
