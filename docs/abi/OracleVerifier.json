@@ -1,0 +1,366 @@
+[
+  {
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "signer_",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "ISSUED_AT_TOLERANCE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MIN_PANEL_SIZE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MIN_QUORUM",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "attestationDigest",
+    "inputs": [
+      {
+        "name": "a",
+        "type": "tuple",
+        "internalType": "struct OracleAttestation.Attestation",
+        "components": [
+          {
+            "name": "requestId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "chainId",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "questionHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "answerType",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "answer",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "figure",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "fromBlock",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "toBlock",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "blockHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "panelJobId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "panelSize",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "quorum",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "agreed",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "issuedAt",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "expiresAt",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
+      },
+      {
+        "name": "consumer",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "consumed",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "oracleSigner",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "verify",
+    "inputs": [
+      {
+        "name": "a",
+        "type": "tuple",
+        "internalType": "struct OracleAttestation.Attestation",
+        "components": [
+          {
+            "name": "requestId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "chainId",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "questionHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "answerType",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "answer",
+            "type": "bytes",
+            "internalType": "bytes"
+          },
+          {
+            "name": "figure",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "fromBlock",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "toBlock",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "blockHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "panelJobId",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "panelSize",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "quorum",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "agreed",
+            "type": "uint16",
+            "internalType": "uint16"
+          },
+          {
+            "name": "issuedAt",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "expiresAt",
+            "type": "uint64",
+            "internalType": "uint64"
+          }
+        ]
+      },
+      {
+        "name": "signature",
+        "type": "bytes",
+        "internalType": "bytes"
+      },
+      {
+        "name": "expectedQuestion",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "answer",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "AttestationConsumed",
+    "inputs": [
+      {
+        "name": "consumer",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "requestId",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "questionHash",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "AlreadyConsumed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "BadSignature",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidAnswer",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidBlockWindow",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidValidityWindow",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "WeakPanel",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "WrongChain",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "WrongQuestion",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ZeroSigner",
+    "inputs": []
+  }
+]
