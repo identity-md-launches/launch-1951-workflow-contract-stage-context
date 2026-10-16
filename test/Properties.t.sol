@@ -3,6 +3,7 @@ pragma solidity 0.8.26;
 
 import {GameTest} from "./helpers/GameTest.sol";
 import {HamsterHour} from "../src/HamsterHour.sol";
+import {OracleAttestation} from "../src/libraries/OracleAttestation.sol";
 
 /// @notice Stateless properties at the arithmetic edges. Inputs are bounded, never assumed away.
 /// forge-config: default.fuzz.runs = 1000
@@ -229,5 +230,90 @@ contract PropertiesTest is GameTest {
         assertEq(_claim(0, bob), a);
         assertEq(game.imdLiability(), 0);
         assertEq(imd.balanceOf(address(game)), 0);
+    }
+
+    /// @dev An existing window closes at the earlier of its snapshotted start and its start under the
+    /// current genesis, whichever direction genesis moved; the view and the bet entry agree exactly.
+    function testFuzz_existingWindowClosesAtEarlierOfSnapshotAndCorrectedStart(uint16 k, int32 shift, uint32 at)
+        public
+    {
+        uint256 window = bound(k, 100, 5000);
+        int256 delta = bound(shift, -int256(uint256(200 hours)), int256(uint256(200 hours)));
+        _ou(window, alice, true, 1 ether);
+        (uint64 snapStart,) = game.windowTimes(window);
+        uint64 corrected = uint64(uint256(int256(uint256(GENESIS)) + delta));
+        vm.prank(TEAM);
+        game.scheduleGenesisTimestamp(corrected);
+        vm.warp(block.timestamp + 48 hours);
+        vm.prank(TEAM);
+        game.setGenesisTimestamp(corrected);
+        uint256 scheduled = uint256(corrected) + window * 3600;
+        uint256 close = scheduled < snapStart ? scheduled : snapStart;
+        uint256 t = bound(at, block.timestamp, uint256(snapStart) + 1 hours);
+        vm.warp(t);
+        bool open = t < close;
+        assertEq(game.isBettingOpen(window), open, "view disagrees with the earlier-start rule");
+        if (!open) vm.expectRevert(HamsterHour.BettingClosed.selector);
+        _ou(window, bob, false, 1 ether);
+        if (!open) vm.expectRevert(HamsterHour.BettingClosed.selector);
+        _exact(window, bob, 7, 1 ether);
+        if (!open) vm.expectRevert(HamsterHour.BettingClosed.selector);
+        _sleep(window, bob, true, 1 ether);
+        // The stored schedule never moves.
+        (uint64 s, uint64 e) = game.windowTimes(window);
+        assertEq(s, snapStart);
+        assertEq(e, snapStart + 3600);
+    }
+
+    /// @dev Issuance strictly before the snapshotted end is refused for the whole settlement period;
+    /// issuance at or after it is accepted up to the verifier's five-minute clock allowance.
+    function testFuzz_attestationIssuedBeforeWindowEndIsNeverAccepted(uint32 lag, uint32 delay, uint16 lead) public {
+        _exact(0, alice, 5, 1 ether);
+        (, uint64 end) = game.windowTimes(0);
+        uint256 lagS = bound(lag, 1, 7 days);
+        uint256 delayS = bound(delay, 0, 48 hours - 1);
+        uint256 leadS = bound(lead, 0, 300);
+        vm.warp(uint256(end) + delayS);
+        OracleAttestation.Attestation memory a = _a(0, 5);
+        a.expiresAt = uint64(block.timestamp + 1 days);
+        a.issuedAt = uint64(uint256(end) - lagS);
+        bytes memory sig = _sign(a);
+        vm.expectRevert(HamsterHour.AttestationPredatesEnd.selector);
+        game.settle(0, a, sig);
+        assertFalse(verifier.consumed(address(game), a.requestId));
+        assertEq(uint256(game.window(0).status), uint256(HamsterHour.Status.Open));
+        // Valid issuance: at least the window end and at most now + 300.
+        uint256 issued = uint256(end) + delayS + leadS;
+        a.issuedAt = uint64(issued);
+        game.settle(0, a, _sign(a));
+        assertEq(game.window(0).result, 5);
+        assertEq(game.window(0).settler, address(this));
+    }
+
+    /// @dev Whatever the balance, a lone EXACT ticket never reserves a jackpot and the full amount it
+    /// left behind is reserved by the next contested window.
+    function testFuzz_loneTicketNeverReservesJackpot(uint128 balance, uint256 guess, uint256 result) public {
+        _configure(false, address(prize));
+        uint256 amount = bound(balance, 0, type(uint128).max);
+        prize.mint(address(game), amount);
+        _exact(0, alice, guess, 1 ether);
+        _ou(0, alice, true, 1 ether);
+        _ou(0, bob, false, 1 ether);
+        _exact(1, bob, 1, 1 ether);
+        _exact(1, carol, 2, 1 ether);
+        _settle(0, result);
+        assertEq(game.window(0).jackpot, 0);
+        assertEq(game.window(0).jackpotAsset, address(0));
+        assertEq(game.jackpotLiability(), 0);
+        assertEq(game.window(0).rankCount, 1);
+        // OVER wins above the bootstrap line, refunds on it, loses below it.
+        uint256 overPayout = result > 1000 ? 1.82 ether : result == 1000 ? 1 ether : 0;
+        assertEq(_claim(0, alice), 0.91 ether + overPayout);
+        assertEq(prize.balanceOf(alice), 0);
+        _settle(1, 1);
+        assertEq(game.window(1).jackpot, amount);
+        assertEq(game.jackpotLiability(), amount);
+        _claim(1, bob);
+        assertEq(prize.balanceOf(bob), amount);
     }
 }

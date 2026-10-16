@@ -99,12 +99,60 @@ contract EdgeCasesTest is GameTest {
         _exact(0, alice, 5, 1 ether);
         (, uint64 end) = game.windowTimes(0);
         vm.warp(uint256(end) - 1);
-        OracleAttestation.Attestation memory a = _a(0, 5);
-        bytes memory sig = _sign(a);
+        OracleAttestation.Attestation memory early = _a(0, 5);
+        bytes memory earlySig = _sign(early);
         vm.expectRevert(HamsterHour.NotSettleable.selector);
-        game.settle(0, a, sig);
+        game.settle(0, early, earlySig);
         vm.warp(end);
+        // The same attestation, now on time, was still signed one second before round 6k+5 ended.
+        vm.expectRevert(HamsterHour.AttestationPredatesEnd.selector);
+        game.settle(0, early, earlySig);
+        assertFalse(verifier.consumed(address(game), early.requestId));
+        assertEq(uint256(game.window(0).status), uint256(HamsterHour.Status.Open));
+        // Issued exactly at the end is the first acceptable instant.
+        OracleAttestation.Attestation memory a = _a(0, 5);
+        assertEq(a.issuedAt, end);
+        game.settle(0, a, _sign(a));
+        assertEq(game.window(0).result, 5);
+    }
+
+    function test_attestationIssuedUpToFiveMinutesAheadOfChainIsAcceptedAtWindowEnd() public {
+        _exact(0, alice, 5, 1 ether);
+        (, uint64 end) = game.windowTimes(0);
+        vm.warp(end);
+        OracleAttestation.Attestation memory a = _a(0, 5);
+        a.issuedAt = end + 300;
+        a.expiresAt = end + 1 days;
+        game.settle(0, a, _sign(a));
+        assertEq(game.window(0).result, 5);
+
+        _exact(60, alice, 5, 1 ether);
+        (, end) = game.windowTimes(60);
+        vm.warp(end);
+        a = _a(60, 5);
+        a.issuedAt = end + 301;
+        a.expiresAt = end + 1 days;
+        bytes memory sig = _sign(a);
+        vm.expectRevert(OracleVerifier.InvalidValidityWindow.selector);
+        game.settle(60, a, sig);
+    }
+
+    function test_predatedAttestationStaysRejectedForTheWholeSettlementPeriod() public {
+        _exact(0, alice, 5, 1 ether);
+        (, uint64 end) = game.windowTimes(0);
+        vm.warp(end);
+        OracleAttestation.Attestation memory a = _a(0, 5);
+        a.issuedAt = end - 1;
+        a.expiresAt = end + 3 days;
+        bytes memory sig = _sign(a);
+        // Waiting does not make a predated attestation valid: the bound is the window end, not the clock.
+        vm.warp(uint256(end) + 47 hours);
+        vm.expectRevert(HamsterHour.AttestationPredatesEnd.selector);
         game.settle(0, a, sig);
+        vm.warp(uint256(end) + 48 hours - 1);
+        vm.expectRevert(HamsterHour.AttestationPredatesEnd.selector);
+        game.settle(0, a, sig);
+        assertFalse(verifier.consumed(address(game), a.requestId));
     }
 
     function test_voidedWindowCannotBeSettledEvenWithValidAttestation() public {
@@ -274,8 +322,11 @@ contract EdgeCasesTest is GameTest {
     function test_jackpotReservedForEarlierWindowIsNotPaidTwice() public {
         _configure(false, address(prize));
         prize.mint(address(game), 100 ether);
+        // Two tickets per window: a lone ticket is uncontested and would leave the jackpot in place.
         _exact(0, alice, 1, 1 ether);
+        _exact(0, carol, 500, 1 ether);
         _exact(1, bob, 1, 1 ether);
+        _exact(1, dave, 500, 1 ether);
         _settle(0, 1);
         prize.mint(address(game), 50 ether);
         _settle(1, 1);
@@ -332,11 +383,191 @@ contract EdgeCasesTest is GameTest {
         _configure(false, address(prize));
         prize.mint(address(game), 1 ether);
         _exact(0, alice, 10, 1 ether);
+        _exact(0, bob, 20, 1 ether);
         _settle(0, 10);
         prize.mint(address(game), 9 ether);
         _claim(0, alice);
         assertEq(prize.balanceOf(alice), 1 ether);
         assertEq(prize.balanceOf(address(game)), 9 ether);
+    }
+
+    function test_loneTicketLeavesJackpotEvenWithOtherMarketsAndAfterAContestedWindow() public {
+        _configure(false, address(prize));
+        prize.mint(address(game), 10 ether);
+        // Window 0 is contested and takes the balance at its settlement.
+        _exact(0, alice, 10, 1 ether);
+        _exact(0, bob, 20, 1 ether);
+        // Window 1 has one EXACT ticket plus live binary markets: still uncontested for the jackpot.
+        _exact(1, carol, 10, 1 ether);
+        _ou(1, alice, true, 1 ether);
+        _ou(1, bob, false, 1 ether);
+        _sleep(1, alice, true, 1 ether);
+        _sleep(1, bob, false, 1 ether);
+        // Window 2 is contested by a tie: two tickets with the same guess make a contest.
+        _exact(2, alice, 10, 1 ether);
+        _exact(2, bob, 10, 1 ether);
+        _settle(0, 10);
+        assertEq(game.window(0).jackpot, 10 ether);
+        prize.mint(address(game), 4 ether);
+        _settle(1, 10);
+        assertEq(game.exactEntries(1), 1);
+        assertEq(game.window(1).jackpot, 0);
+        assertEq(game.window(1).jackpotAsset, address(0));
+        assertEq(game.jackpotLiability(), 10 ether, "a lone ticket must not change jackpot liability");
+        // The lone ticket still wins its whole EXACT reward (60% plus the returned lower tiers), no prize.
+        assertEq(_claim(1, carol), 0.91 ether);
+        assertEq(prize.balanceOf(carol), 0);
+        vm.expectRevert(HamsterHour.NothingToClaim.selector);
+        vm.prank(carol);
+        game.claim(1);
+        _settle(2, 10);
+        assertEq(game.window(2).jackpot, 4 ether, "the donation skipped by the lone ticket goes to the next contest");
+        _claim(2, alice);
+        _claim(2, bob);
+        assertEq(prize.balanceOf(alice), 2 ether);
+        assertEq(prize.balanceOf(bob), 2 ether);
+        _claim(0, alice);
+        assertEq(prize.balanceOf(alice), 12 ether);
+        assertEq(prize.balanceOf(address(game)), 0);
+        assertEq(game.jackpotLiability(), 0);
+    }
+
+    function test_loneTicketWindowKeepsTheRuleWhenTheSecondTicketIsRefusedAtStart() public {
+        _configure(false, address(prize));
+        prize.mint(address(game), 3 ether);
+        _exact(0, alice, 10, 1 ether);
+        (uint64 start,) = game.windowTimes(0);
+        vm.warp(start);
+        // A second entry one second late does not make it a contest.
+        vm.expectRevert(HamsterHour.BettingClosed.selector);
+        _exact(0, bob, 11, 1 ether);
+        _settle(0, 10);
+        assertEq(game.window(0).jackpot, 0);
+        assertEq(_claim(0, alice), 0.91 ether);
+        assertEq(prize.balanceOf(address(game)), 3 ether);
+    }
+
+    // ---------------------------------------------------------------- fee-less settlements
+
+    function test_fullyRefundedSettlementNeverReimbursesEvenAfterTheReserveIsFunded() public {
+        // Every market one-sided: no fee, no reimbursement, flag set at settlement.
+        _ou(0, alice, true, 5 ether);
+        _sleep(0, bob, false, 5 ether);
+        vm.prank(carol);
+        game.fundOracleReserve(1 ether);
+        _settle(0, 7);
+        HamsterHour.Window memory w = game.window(0);
+        assertTrue(w.reimbursed);
+        assertEq(w.reimbursement, 0);
+        assertTrue(w.marketVoided[0]);
+        assertTrue(w.marketVoided[2]);
+        assertEq(game.oracleReserve(), 1 ether, "a fee-less settlement must not touch the reserve");
+        vm.expectRevert(HamsterHour.NothingToClaim.selector);
+        vm.prank(keeper);
+        game.claim(0);
+        // Funding arriving later does not revive a reimbursement that was never earned.
+        vm.prank(carol);
+        game.fundOracleReserve(1 ether);
+        vm.expectRevert(HamsterHour.NothingToClaim.selector);
+        vm.prank(keeper);
+        game.claim(0);
+        assertEq(game.oracleReserve(), 2 ether);
+        assertEq(_claim(0, alice), 5 ether);
+        assertEq(_claim(0, bob), 5 ether);
+        assertEq(game.imdLiability(), 2 ether);
+        _assertBacked();
+    }
+
+    function test_oneLiveMarketIsEnoughToEarnTheReimbursement() public {
+        vm.prank(carol);
+        game.fundOracleReserve(1 ether);
+        _ou(0, alice, true, 5 ether); // one-sided: refunded
+        _sleep(0, alice, true, 0.5 ether); // the smallest live market
+        _sleep(0, bob, false, 0.5 ether);
+        _settle(0, 7);
+        HamsterHour.Window memory w = game.window(0);
+        assertFalse(w.reimbursed);
+        assertEq(w.reimbursement, 0.5 ether);
+        assertEq(game.oracleReserve(), 1 ether + 0.03 ether - 0.5 ether);
+        assertEq(_claim(0, keeper), 0.5 ether);
+        assertEq(_claim(0, alice), 5 ether);
+        assertEq(_claim(0, bob), 0.91 ether);
+        _assertBacked();
+    }
+
+    function test_equalLineRefundIsFeelessAndTakesNoReimbursement() public {
+        vm.prank(carol);
+        game.fundOracleReserve(1 ether);
+        _ou(0, alice, true, 5 ether);
+        _ou(0, bob, false, 5 ether);
+        _settle(0, 1000); // result equals the bootstrap line: the only market refunds
+        assertTrue(game.window(0).reimbursed);
+        assertEq(game.oracleReserve(), 1 ether);
+        assertEq(game.window(0).teamCredit, 0);
+        vm.expectRevert(HamsterHour.NothingToClaim.selector);
+        vm.prank(keeper);
+        game.claim(0);
+        assertEq(_claim(0, alice), 5 ether);
+        assertEq(_claim(0, bob), 5 ether);
+    }
+
+    // ---------------------------------------------------------------- genesis corrections and open windows
+
+    function test_earlierGenesisClosesAtTheExactCorrectedSecondAndKeepsRefundSchedule() public {
+        _ou(10, alice, true, 1 ether);
+        (uint64 snapStart, uint64 snapEnd) = game.windowTimes(10);
+        // Correct genesis so window 10's rounds begin exactly 48 hours after this proposal executes.
+        uint64 executeAt = uint64(block.timestamp + 48 hours);
+        uint64 corrected = executeAt + 1 hours - 10 * 3600;
+        vm.prank(TEAM);
+        game.scheduleGenesisTimestamp(corrected);
+        vm.warp(executeAt);
+        vm.prank(TEAM);
+        game.setGenesisTimestamp(corrected);
+        uint256 correctedStart = uint256(corrected) + 10 * 3600;
+        assertLt(correctedStart, snapStart);
+        vm.warp(correctedStart - 1);
+        assertTrue(game.isBettingOpen(10));
+        _ou(10, bob, false, 1 ether);
+        vm.warp(correctedStart);
+        assertFalse(game.isBettingOpen(10));
+        vm.expectRevert(HamsterHour.BettingClosed.selector);
+        _ou(10, carol, true, 1 ether);
+        // The stored schedule is unchanged, so the window is not settleable before its snapshotted end.
+        (uint64 s, uint64 e) = game.windowTimes(10);
+        assertEq(s, snapStart);
+        assertEq(e, snapEnd);
+        OracleAttestation.Attestation memory a = _a(10, 5);
+        bytes memory sig = _sign(a);
+        vm.expectRevert(HamsterHour.NotSettleable.selector);
+        game.settle(10, a, sig);
+        // Nor voidable before the snapshotted end plus 48 hours.
+        vm.warp(uint256(snapEnd) + 48 hours - 1);
+        vm.expectRevert(HamsterHour.NotTimedOut.selector);
+        game.voidWindow(10);
+        vm.warp(uint256(snapEnd) + 48 hours);
+        game.voidWindow(10);
+        assertEq(_claim(10, alice), 1 ether);
+        assertEq(_claim(10, bob), 1 ether);
+    }
+
+    function test_earlierGenesisDoesNotCloseWindowsWhoseCorrectedStartIsStillAhead() public {
+        _ou(100, alice, true, 1 ether);
+        uint64 corrected = GENESIS - 1 hours;
+        vm.prank(TEAM);
+        game.scheduleGenesisTimestamp(corrected);
+        vm.warp(block.timestamp + 48 hours);
+        vm.prank(TEAM);
+        game.setGenesisTimestamp(corrected);
+        assertTrue(game.isBettingOpen(100));
+        _ou(100, bob, false, 1 ether);
+        // It closes one hour before the snapshotted start, not at it.
+        (uint64 snapStart,) = game.windowTimes(100);
+        vm.warp(snapStart - 1 hours - 1);
+        _ou(100, bob, false, 1 ether);
+        vm.warp(snapStart - 1 hours);
+        vm.expectRevert(HamsterHour.BettingClosed.selector);
+        _ou(100, bob, false, 1 ether);
     }
 
     function test_jackpotTokenSetAfterSettlementDoesNotApplyRetroactively() public {

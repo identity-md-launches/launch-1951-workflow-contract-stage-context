@@ -242,6 +242,17 @@ contract GameHandler is Test {
         game.setGenesisTimestamp(genesis);
     }
 
+    /// @dev A correction that moves genesis earlier closes betting on windows whose corrected start has
+    /// passed while their stored schedule still governs settlement and the timeout.
+    function advanceGenesis(uint256 seed) external {
+        uint64 genesis = uint64(game.genesisTimestamp() - (1 + seed % 2 days));
+        vm.prank(team);
+        game.scheduleGenesisTimestamp(genesis);
+        vm.warp(block.timestamp + 48 hours);
+        vm.prank(team);
+        game.setGenesisTimestamp(genesis);
+    }
+
     function drain() external {
         for (uint256 i; i < touched.length; ++i) {
             uint256 k = touched[i];
@@ -289,7 +300,8 @@ contract GameInvariantTest is GameTest {
         _configure(false, address(prize));
         actors = [alice, bob, carol, dave];
         handler = new GameHandler(game, imd, stakeToken, prize, SIGNER_KEY, actors);
-        bytes4[] memory selectors = new bytes4[](13);
+        bytes4[] memory selectors = new bytes4[](14);
+        selectors[13] = handler.advanceGenesis.selector;
         selectors[0] = handler.bet.selector;
         selectors[1] = handler.advance.selector;
         selectors[2] = handler.settle.selector;
