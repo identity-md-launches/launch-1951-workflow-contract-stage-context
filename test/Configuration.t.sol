@@ -174,6 +174,46 @@ contract ConfigurationTest is GameTest {
         _exact(50, alice, 5, 1 ether);
     }
 
+    function test_earlierGenesisClosesExistingWindowsWhoseCorrectedStartPassed() public {
+        _ou(5, alice, true, 1 ether);
+        _ou(6, alice, true, 1 ether);
+        uint64 corrected = GENESIS - 10 hours;
+        vm.prank(TEAM);
+        game.scheduleGenesisTimestamp(corrected);
+        vm.warp(block.timestamp + 48 hours);
+        vm.prank(TEAM);
+        game.setGenesisTimestamp(corrected);
+        // Corrected starts: window 5 at GENESIS - 5h, window 6 at GENESIS - 4h.
+        vm.warp(GENESIS - 5 hours - 1);
+        assertTrue(game.isBettingOpen(5));
+        _ou(5, bob, false, 1 ether);
+        vm.warp(GENESIS - 5 hours);
+        assertFalse(game.isBettingOpen(5));
+        vm.expectRevert(HamsterHour.BettingClosed.selector);
+        _exact(5, bob, 1234, 1 ether);
+        assertTrue(game.isBettingOpen(6));
+        vm.warp(GENESIS - 4 hours);
+        assertFalse(game.isBettingOpen(6));
+        vm.expectRevert(HamsterHour.BettingClosed.selector);
+        _sleep(6, bob, true, 1 ether);
+        // The stored schedule still governs settlement and the timeout.
+        (, uint64 end) = game.windowTimes(5);
+        assertEq(end, GENESIS + 6 hours);
+    }
+
+    function test_laterGenesisKeepsExistingWindowStartAsBettingClose() public {
+        _ou(5, alice, true, 1 ether);
+        vm.prank(TEAM);
+        game.scheduleGenesisTimestamp(GENESIS + 10 hours);
+        vm.warp(block.timestamp + 48 hours);
+        vm.prank(TEAM);
+        game.setGenesisTimestamp(GENESIS + 10 hours);
+        vm.warp(GENESIS + 5 hours);
+        assertFalse(game.isBettingOpen(5));
+        vm.expectRevert(HamsterHour.BettingClosed.selector);
+        _ou(5, bob, false, 1 ether);
+    }
+
     function test_lineUsesSevenSettledWindowsAndFreezesAtCreation() public {
         for (uint256 i; i < 9; ++i) {
             _exact(i, alice, 1000, 1 ether);

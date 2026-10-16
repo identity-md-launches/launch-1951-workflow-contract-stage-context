@@ -168,6 +168,27 @@ contract MarketsTest is GameTest {
         game.claim(0);
     }
 
+    function test_feelessSettlementTakesNoReimbursement() public {
+        vm.prank(carol);
+        game.fundOracleReserve(10 ether);
+        _ou(0, alice, true, 0.5 ether);
+        _ou(1, alice, true, 1 ether);
+        _ou(1, bob, false, 1 ether);
+        _settle(0, 0);
+        assertTrue(game.window(0).reimbursed);
+        assertEq(game.window(0).reimbursement, 0);
+        assertEq(game.oracleReserve(), 10 ether);
+        vm.expectRevert(HamsterHour.NothingToClaim.selector);
+        vm.prank(keeper);
+        game.claim(0);
+        assertEq(_claim(0, alice), 0.5 ether);
+        // A fee-bearing settlement is still reimbursed from the reserve.
+        _settle(1, 0);
+        assertEq(game.oracleReserve(), 10 ether + 0.06 ether - 0.5 ether);
+        assertEq(_claim(1, keeper), 0.5 ether);
+        _assertBacked();
+    }
+
     function test_exactCapacitySettlementFitsInBlock() public {
         for (uint256 i; i < 256; ++i) {
             address who = address(uint160(10000 + i));

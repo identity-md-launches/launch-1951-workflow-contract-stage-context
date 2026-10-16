@@ -49,7 +49,7 @@ OracleAttestation(bytes32 requestId,uint256 chainId,bytes32 questionHash,uint8 a
 
 `OracleVerifier.verify` verifies in **its caller's domain**, consumes `(caller, requestId)` once and returns the number. HamsterHour is the caller during settlement. Someone calling the verifier directly cannot consume HamsterHour's signature or affect the game's state. A separate HamsterHour status transition prevents repeat settlement with a new oracle request id.
 
-The 300-second tolerance accommodates oracle/chain clock drift. `issuedAt` must not exceed `now + 300`, `issuedAt <= expiresAt`, `now <= expiresAt`, and `issuedAt + 300 >= window.endsAt`. The game also requires its own settlement deadline. A failed signature verification rolls back status, consumption and all accounting.
+The 300-second tolerance accommodates oracle/chain clock drift. `issuedAt` must not exceed `now + 300`, `issuedAt <= expiresAt`, `now <= expiresAt`, and `issuedAt >= window.endsAt` (no tolerance on this bound: an attestation signed before the last round ended cannot include it). The game also requires its own settlement deadline. A failed signature verification rolls back status, consumption and all accounting.
 
 ## Recorded evidence and limits
 

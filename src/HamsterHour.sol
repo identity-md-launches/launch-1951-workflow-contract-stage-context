@@ -235,7 +235,14 @@ contract HamsterHour is ReentrancyGuard {
         Window storage w = _windows[k];
         if (w.status == Status.Uncreated && k < closedWindowFloor) return false;
         (uint64 startsAt,) = windowTimes(k);
-        return (w.status == Status.Uncreated || w.status == Status.Open) && block.timestamp < startsAt;
+        return (w.status == Status.Uncreated || w.status == Status.Open) && block.timestamp < startsAt
+            && block.timestamp < _scheduledStart(k);
+    }
+
+    /// @dev Start of window k under the current genesis. An existing window closes at the earlier of
+    /// its snapshotted start and this one, so moving genesis earlier never keeps started rounds bettable.
+    function _scheduledStart(uint256 k) private view returns (uint256) {
+        return uint256(genesisTimestamp) + k * WINDOW_DURATION;
     }
 
     function question(uint256 k) public view returns (string memory) {
@@ -294,7 +301,9 @@ contract HamsterHour is ReentrancyGuard {
             w.source = sourceUrl;
             emit WindowCreated(k, startsAt, endsAt, w.line, w.source);
         }
-        if (w.status != Status.Open || block.timestamp >= w.startsAt) revert BettingClosed();
+        if (w.status != Status.Open || block.timestamp >= w.startsAt || block.timestamp >= _scheduledStart(k)) {
+            revert BettingClosed();
+        }
         if (amount > MAX_POOL - w.pools[uint256(market)]) revert PoolLimit();
         w.pools[uint256(market)] += amount;
     }
@@ -313,7 +322,8 @@ contract HamsterHour is ReentrancyGuard {
         if (w.status != Status.Open || block.timestamp < w.endsAt || block.timestamp >= uint256(w.endsAt) + TIMEOUT) {
             revert NotSettleable();
         }
-        if (uint256(a.issuedAt) + oracleVerifier.ISSUED_AT_TOLERANCE() < w.endsAt) revert AttestationPredatesEnd();
+        // The attester signs after reading the source, so issuance before the end cannot cover round 6k+5.
+        if (a.issuedAt < w.endsAt) revert AttestationPredatesEnd();
         w.status = Status.Settled;
         w.result = oracleVerifier.verify(a, signature, questionHash(k, a.fromBlock, a.toBlock));
         w.settler = msg.sender;
@@ -343,7 +353,9 @@ contract HamsterHour is ReentrancyGuard {
         }
         _rankRewards(w);
         oracleReserve += oracleShare;
-        _reserveReimbursement(k, w);
+        // A settlement in which every market refunded took no oracle fee and earns no reimbursement.
+        if (oracleShare == 0) w.reimbursed = true;
+        else _reserveReimbursement(k, w);
         _distributeStaking(stakingShare, w.endsAt);
         _snapshotJackpot(k, w);
         recentResults[settledWindows % 7] = w.result;
@@ -518,7 +530,8 @@ contract HamsterHour is ReentrancyGuard {
 
     function _snapshotJackpot(uint256 k, Window storage w) private {
         address token = jackpotToken;
-        if (token == address(0) || w.rankCount == 0) return;
+        // A lone EXACT ticket is uncontested: it keeps its market payout but never takes the jackpot.
+        if (token == address(0) || _guesses[k].length < 2) return;
         // A broken optional prize token must not prevent settling/refunding the IMD markets.
         (bool ok, uint256 balance) = _jackpotBalance(token);
         if (!ok) {

@@ -30,10 +30,13 @@ contract OracleTest is GameTest {
         bytes memory sig = _sign(a);
         _reject(a, sig, HamsterHour.NotSettleable.selector);
         vm.warp(GENESIS + 1 hours);
-        a.issuedAt = uint64(block.timestamp - 301);
+        a.issuedAt = uint64(block.timestamp - 300);
         a.expiresAt = uint64(block.timestamp + 1 hours);
         _reject(a, _sign(a), HamsterHour.AttestationPredatesEnd.selector);
-        a.issuedAt += 1;
+        // Signed one second before the last round ended: it cannot include round 6k+5.
+        a.issuedAt = uint64(block.timestamp - 1);
+        _reject(a, _sign(a), HamsterHour.AttestationPredatesEnd.selector);
+        a.issuedAt = uint64(block.timestamp);
         game.settle(0, a, _sign(a));
     }
 

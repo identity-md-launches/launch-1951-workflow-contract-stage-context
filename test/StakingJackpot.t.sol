@@ -99,7 +99,9 @@ contract StakingJackpotTest is GameTest {
         game.stake(200 ether);
         imd.mint(address(game), 1000 ether); // an unencumbered prize donation
         _exact(0, bob, 100, 100 ether);
+        _exact(0, dave, 100, 100 ether);
         _exact(1, carol, 100, 100 ether);
+        _exact(1, dave, 100, 100 ether);
         _settle(0, 100);
         assertEq(game.window(0).jackpot, 1000 ether);
         assertEq(game.jackpotLiability(), 1000 ether);
@@ -107,12 +109,35 @@ contract StakingJackpotTest is GameTest {
         _settle(1, 100);
         assertEq(game.window(1).jackpot, 0);
         assertEq(_claim(1, carol), 91 ether);
-        assertEq(_claim(0, bob), 1091 ether);
+        assertEq(_claim(0, bob), 591 ether);
+        assertEq(_claim(0, dave), 591 ether);
+        assertEq(_claim(1, dave), 91 ether);
         assertEq(game.jackpotLiability(), 0);
         vm.prank(alice);
         game.unstake(200 ether);
         vm.prank(alice);
         game.claimStaking();
+        _assertBacked();
+    }
+
+    function test_loneExactTicketKeepsMarketPayoutButCannotTakeJackpot() public {
+        _configure(false, address(prize));
+        _exact(5, dave, 0, 0.5 ether);
+        _exact(6, alice, 1000, 10 ether);
+        _exact(6, bob, 1200, 10 ether);
+        _exact(6, carol, 800, 10 ether);
+        (, uint64 end6) = game.windowTimes(6);
+        vm.warp(end6);
+        prize.mint(address(game), 1000 ether);
+        _settle(5, 123456);
+        assertEq(game.window(5).jackpot, 0);
+        assertEq(game.jackpotLiability(), 0);
+        assertEq(_claim(5, dave), 0.455 ether);
+        assertEq(prize.balanceOf(dave), 0);
+        _settle(6, 1000);
+        assertEq(game.window(6).jackpot, 1000 ether);
+        _claim(6, alice);
+        assertEq(prize.balanceOf(alice), 1000 ether);
         _assertBacked();
     }
 
@@ -140,9 +165,11 @@ contract StakingJackpotTest is GameTest {
         game.stake(500 ether);
         stakeToken.mint(address(game), 7 ether);
         _exact(0, bob, 0, 1 ether);
+        _exact(0, carol, 3, 1 ether);
         _settle(0, 0);
         assertEq(game.window(0).jackpot, 7 ether);
         _claim(0, bob);
+        assertEq(stakeToken.balanceOf(bob), 1e36 + 7 ether);
         assertEq(stakeToken.balanceOf(address(game)), 500 ether);
         vm.prank(alice);
         game.unstake(500 ether);
@@ -174,6 +201,7 @@ contract StakingJackpotTest is GameTest {
         _ou(0, alice, true, 1 ether);
         _exact(1, bob, 1, 1 ether);
         _exact(60, carol, 1, 1 ether);
+        _exact(60, dave, 2, 1 ether);
         _settle(0, 5);
         assertEq(game.window(0).jackpot, 0);
         vm.warp(GENESIS + 2 hours + 48 hours);
@@ -188,6 +216,7 @@ contract StakingJackpotTest is GameTest {
         _configure(false, address(prize));
         prize.mint(address(game), 100 ether);
         _exact(0, alice, 0, 1 ether);
+        _exact(0, bob, 5, 1 ether);
         _settle(0, 0);
         prize.setFail(true);
         vm.expectRevert();
@@ -198,7 +227,7 @@ contract StakingJackpotTest is GameTest {
         uint256 beforeBalance = imd.balanceOf(alice);
         vm.prank(alice);
         game.claim(0, false);
-        assertEq(imd.balanceOf(alice) - beforeBalance, 0.91 ether);
+        assertEq(imd.balanceOf(alice) - beforeBalance, 1.274 ether);
         prize.setFail(false);
         vm.prank(alice);
         game.claim(0);
@@ -210,8 +239,9 @@ contract StakingJackpotTest is GameTest {
         BrokenBalanceToken broken = new BrokenBalanceToken();
         _configure(false, address(broken));
         _exact(0, alice, 0, 1 ether);
+        _exact(0, bob, 5, 1 ether);
         _settle(0, 0);
-        assertEq(_claim(0, alice), 0.91 ether);
+        assertEq(_claim(0, alice), 1.274 ether);
         assertEq(game.window(0).jackpot, 0);
     }
 
@@ -263,6 +293,7 @@ contract StakingJackpotTest is GameTest {
         game.stake(10 ether);
         vm.stopPrank();
         _exact(0, bob, 0, 1 ether);
+        _exact(0, carol, 3, 1 ether);
         _settle(0, 0);
         _claim(0, bob);
         assertEq(token.balanceOf(bob), 5 ether);
